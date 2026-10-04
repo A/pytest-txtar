@@ -85,7 +85,21 @@ def compare(case: Case, outcome: Outcome) -> list[Mismatch]:
             mismatches.append(Mismatch(name, expected, "<file does not exist>\n"))
         elif not text_matches(expected, actual):
             mismatches.append(Mismatch(name, expected, actual))
+    for name, seed in changed_fixtures(case, outcome).items():
+        actual = outcome.files[name]
+        shown = "<file does not exist>\n" if actual is None else actual
+        mismatches.append(Mismatch(f"{name} (unchanged fixture)", seed, shown))
     return mismatches
+
+
+def changed_fixtures(case: Case, outcome: Outcome) -> dict[str, str]:
+    """Unasserted fixtures the run deleted or altered, with their seeded text."""
+    changed: dict[str, str] = {}
+    for name, seed in case.unasserted_fixtures().items():
+        actual = outcome.files[name]
+        if actual is None or not text_matches(seed, actual):
+            changed[name] = seed
+    return changed
 
 
 def report(mismatch: Mismatch) -> str:

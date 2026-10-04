@@ -49,6 +49,19 @@ class Case:
     fixtures: list[tuple[str, str]] = field(default_factory=list)
     expected: list[tuple[str, str]] = field(default_factory=list)
 
+    def unasserted_fixtures(self) -> dict[str, str]:
+        """Fixtures with no `expected/` section, keyed by the `expected/` name they would take.
+
+        Each must survive the run unchanged; a later fixture of the same path wins, as on disk.
+        """
+        asserted = {name for name, _ in self.expected}
+        seeded: dict[str, str] = {}
+        for name, data in self.fixtures:
+            target = "expected/" + name.removeprefix("fixtures/")
+            if target not in asserted:
+                seeded[target] = data
+        return seeded
+
 
 def load_case(path: Path, spec: TxtarSpec) -> Case:
     try:

@@ -121,15 +121,21 @@ including none, and never crosses a line boundary — it covers commit hashes, t
 durations. A line without `[..]` must match exactly, whitespace included.
 
 Tokens and `[..]` apply to `stdout`, `stderr` and every `expected/` section. They are not expanded
-in `cmd` or `fixtures/`, which are taken literally.
+in `cmd` or `fixtures/`, which are written to the sandbox literally; a fixture's text is matched
+with them only when it stands in for an absent `expected/` section (see below).
 
 ### Assertions
 
-- An absent section asserts nothing. A case with no `stderr` section does not require stderr to be
-  empty; a file with no `expected/` section is not checked.
+- An absent section asserts nothing: a case with no `stderr` section does not require stderr to be
+  empty.
 - An absent `exit` asserts exit `0`.
 - An `expected/` section for a file that does not exist fails the case.
-- Files created beyond those named by `expected/` are not flagged.
+- Every file seeded by a `fixtures/<root>/<path>` section with no matching `expected/<root>/<path>`
+  section must be left unchanged: after the run it must still match the fixture's text, under the
+  same tokens and `[..]` as an `expected/` section, and a deleted or altered one fails the case as
+  `expected/<root>/<path> (unchanged fixture)`. An error path must leave its inputs intact, and
+  asserting that by default keeps the corpus deterministic without the author remembering to.
+- Files created beyond those named by `fixtures/` and `expected/` are not flagged.
 - A failure that needs an unwritable path or another OS-level fault is not expressible — fixtures
   carry content, not permissions.
 
@@ -155,7 +161,9 @@ pytest tests/cases/my-case.txtar --txtar-update
 
 `--txtar-update` rewrites each selected case whose assertions do not hold — its `stdout`, `stderr`,
 `exit` and `expected/` sections come from the actual normalized run, `cmd` and `fixtures/` are left
-untouched — and lists the rewritten cases in the terminal summary. A case that already passes is
+untouched — and lists the rewritten cases in the terminal summary. A fixture the run altered
+without an `expected/` section gains one holding its new text; one the run deleted gains nothing
+and the case keeps failing, since txtar cannot assert an absent file. A case that already passes is
 never rewritten, so a holding `[..]` is not flattened into the run's literal text. Review the resulting diff as you would any other change —
 a baseline is only as good as the reading it got. Re-running `--txtar-update` on an unchanged
 corpus must produce no diff.
@@ -181,6 +189,14 @@ The fixture lands at `<sandbox>/xdg/mytool/config.yaml`, which the spec's `XDG_C
 makes the tool read as the user's config. The absolute path it echoes back is normalized to
 `{XDG}`, while `demo` is relative to the working directory and needs no token. The trailing
 `expected/cwd/` section asserts the file the run left behind.
+
+## Changes
+
+### 0.2.0
+
+- A fixture without a matching `expected/` section is now asserted unchanged after the run, where
+  0.1.0 did not check it. A case whose command alters or deletes such a fixture now fails; give it
+  an `expected/` section (or run `--txtar-update`) if the change is intended.
 
 ## License
 

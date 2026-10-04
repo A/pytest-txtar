@@ -1,6 +1,6 @@
 [project]
 name = "pytest-txtar"
-version = "0.1.0"
+version = "0.2.0"
 description = "Txtar-driven contract testing for command-line tools: sandboxed runs, normalized assertions, golden update."
 readme = "README.md"
 license = "MIT"

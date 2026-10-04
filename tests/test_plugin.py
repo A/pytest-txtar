@@ -99,6 +99,22 @@ def test_a_case_is_selected_by_name_with_dash_k(pytester: pytest.Pytester):
     result.stdout.fnmatch_lines(["cases/greet.txtar*PASSED*"])
 
 
+def test_a_case_that_modifies_an_unasserted_fixture_fails_naming_it(pytester: pytest.Pytester):
+    write_corpus(
+        pytester,
+        clobber=(
+            "-- cmd --\n"
+            "py -c \"import pathlib,sys; pathlib.Path('in.md').write_text('half'); sys.exit(1)\"\n"
+            "-- exit --\n1\n-- fixtures/cwd/in.md --\nseed\n"
+        ),
+    )
+
+    result = pytester.runpytest()
+
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines(["=== expected/cwd/in.md (unchanged fixture) ==="])
+
+
 def test_update_rewrites_a_mismatching_case_so_the_next_run_passes(pytester: pytest.Pytester):
     write_corpus(pytester, greet=MISMATCHING)
     case = pytester.path / "cases" / "greet.txtar"

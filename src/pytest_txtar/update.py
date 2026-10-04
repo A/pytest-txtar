@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from pytest_txtar import txtar
 from pytest_txtar.case import Case
-from pytest_txtar.compare import Outcome
+from pytest_txtar.compare import Outcome, changed_fixtures
 
 
 def updated_archive(case: Case, outcome: Outcome) -> txtar.Archive:
     """The case with its assertions taken from the run; `cmd` and `fixtures/` kept.
+
+    A fixture the run changed without an `expected/` section gains one holding its new text.
 
     Sections already present keep their position; new ones are appended, so a
     second update over the same run is byte-identical.
@@ -19,6 +21,11 @@ def updated_archive(case: Case, outcome: Outcome) -> txtar.Archive:
     for name, previous in case.expected:
         actual = outcome.files[name]
         fresh[name] = previous if actual is None else actual
+    for name in changed_fixtures(case, outcome):
+        actual = outcome.files[name]
+        # A deleted fixture has no content to assert; the case keeps failing for review.
+        if actual is not None:
+            fresh[name] = actual
 
     files: list[tuple[str, str]] = []
     for name, data in case.archive.files:

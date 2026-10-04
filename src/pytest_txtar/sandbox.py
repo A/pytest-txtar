@@ -58,7 +58,8 @@ def execute(case: Case, spec: TxtarSpec, sandbox: Path) -> Outcome:
             early_exit = (line, exit_code)
             break
 
-    files = {name: read_optional(tree_target(roots, name)) for name, _ in case.expected}
+    watched = [name for name, _ in case.expected] + list(case.unasserted_fixtures())
+    files = {name: read_optional(tree_target(roots, name)) for name in watched}
     normalize = normalizer(roots, spec.token_map)
     return Outcome(
         stdout=normalize("".join(out_parts)),

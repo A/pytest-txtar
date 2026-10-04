@@ -266,6 +266,82 @@ def test_an_expected_file_that_was_never_written_is_reported_missing(tmp_path: P
     assert compare(case, outcome)[0].actual == "<file does not exist>\n"
 
 
+NOTE = "pathlib.Path(os.environ['HOME'], 'note.md')"
+WRITE_NOTE = f"py -c \"import os,pathlib; {NOTE}.write_text('{{}}')\"\n"
+DELETE_NOTE = f'py -c "import os,pathlib; {NOTE}.unlink()"\n'
+
+
+def fixture_case(cmd: str, tail: str = "") -> str:
+    return f"-- cmd --\n{cmd}-- exit --\n0\n-- fixtures/home/note.md --\nseed\n{tail}"
+
+
+def test_an_unasserted_fixture_left_unchanged_passes(tmp_path: Path):
+    case = load_case(write_case(tmp_path, fixture_case("py -c pass\n")), SPEC)
+
+    outcome = run_case(case, SPEC)
+
+    assert outcome.files == {"expected/home/note.md": "seed\n"}
+    assert compare(case, outcome) == []
+
+
+def test_an_unasserted_fixture_the_run_modified_fails_as_unchanged_fixture(tmp_path: Path):
+    case = load_case(write_case(tmp_path, fixture_case(WRITE_NOTE.format("half"))), SPEC)
+
+    mismatches = compare(case, run_case(case, SPEC))
+
+    assert [m.label for m in mismatches] == ["expected/home/note.md (unchanged fixture)"]
+    assert (mismatches[0].expected, mismatches[0].actual) == ("seed\n", "half")
+
+
+def test_an_unasserted_fixture_the_run_deleted_fails(tmp_path: Path):
+    case = load_case(write_case(tmp_path, fixture_case(DELETE_NOTE)), SPEC)
+
+    mismatches = compare(case, run_case(case, SPEC))
+
+    assert [m.label for m in mismatches] == ["expected/home/note.md (unchanged fixture)"]
+    assert mismatches[0].actual == "<file does not exist>\n"
+
+
+def test_an_unasserted_fixture_is_compared_with_wildcards_and_tokens(tmp_path: Path):
+    text = (
+        "-- cmd --\n"
+        "py -c \"import os,pathlib; p=pathlib.Path(os.environ['HOME'], 'note.md'); "
+        "p.write_text(os.environ['HOME'] + ' 42\\\\n')\"\n"
+        "-- fixtures/home/note.md --\n"
+        "{HOME} [..]\n"
+    )
+    case = load_case(write_case(tmp_path, text), SPEC)
+
+    assert compare(case, run_case(case, SPEC)) == []
+
+
+def test_an_asserted_fixture_is_checked_against_its_expected_section_only(tmp_path: Path):
+    case = load_case(
+        write_case(
+            tmp_path,
+            fixture_case(WRITE_NOTE.format("new"), "-- expected/home/note.md --\nnew\n"),
+        ),
+        SPEC,
+    )
+
+    outcome = run_case(case, SPEC)
+
+    assert outcome.files == {"expected/home/note.md": "new"}
+    assert compare(case, outcome) == []
+
+
+def test_a_case_without_fixtures_watches_no_extra_files(tmp_path: Path):
+    case = load_case(
+        write_case(tmp_path, '-- cmd --\npy -c "import sys; sys.exit(1)"\n-- exit --\n1\n'),
+        SPEC,
+    )
+
+    outcome = run_case(case, SPEC)
+
+    assert outcome.files == {}
+    assert compare(case, outcome) == []
+
+
 def test_the_process_runs_in_the_spec_cwd_root(tmp_path: Path):
     case = load_case(
         write_case(tmp_path, '-- cmd --\npy -c "import os; print(os.getcwd())"\n'),
@@ -411,3 +487,29 @@ def test_updating_an_already_updated_case_rewrites_nothing(tmp_path: Path):
 
     assert compare(second, outcome) == []
     assert txtar.serialize(updated_archive(second, outcome)) == once
+
+
+def test_update_asserts_an_unasserted_fixture_only_when_the_run_changed_it(tmp_path: Path):
+    text = (
+        "-- cmd --\n"
+        + WRITE_NOTE.format("changed")
+        + "-- fixtures/home/note.md --\nseed\n-- fixtures/cwd/keep.md --\nkeep\n"
+    )
+    case = load_case(write_case(tmp_path, text), SPEC)
+    outcome = run_case(case, SPEC)
+
+    archive = updated_archive(case, outcome)
+
+    names = [name for name, _ in archive.files]
+    assert ("expected/home/note.md", "changed") in archive.files
+    assert "expected/cwd/keep.md" not in names
+    updated = load_case(write_case(tmp_path, txtar.serialize(archive)), SPEC)
+    assert compare(updated, run_case(updated, SPEC)) == []
+
+
+def test_update_writes_no_section_for_a_deleted_fixture(tmp_path: Path):
+    case = load_case(write_case(tmp_path, fixture_case(DELETE_NOTE)), SPEC)
+
+    archive = updated_archive(case, run_case(case, SPEC))
+
+    assert "expected/home/note.md" not in [name for name, _ in archive.files]
