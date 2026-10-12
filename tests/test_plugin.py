@@ -151,6 +151,25 @@ def test_update_keeps_a_wildcard_that_still_matches(pytester: pytest.Pytester):
     assert case.read_text(encoding="utf-8") == wildcarded
 
 
+ECHO_STDIN = (
+    '-- cmd --\npy -c "import sys; print(sys.stdin.read().strip())"\n'
+    "-- stdin --\n{CWD}/hook.json\n"
+    "-- exit --\n0\n"
+    "-- stdout --\n{CWD}/hook.json\n"
+)
+
+
+def test_a_case_with_stdin_passes_and_update_keeps_its_stdin(pytester: pytest.Pytester):
+    write_corpus(pytester, hook=ECHO_STDIN.replace("-- stdout --\n{CWD}", "-- stdout --\nstale"))
+    case = pytester.path / "cases" / "hook.txtar"
+
+    updated = pytester.runpytest("--txtar-update")
+
+    updated.assert_outcomes(passed=1)
+    assert case.read_text(encoding="utf-8") == ECHO_STDIN
+    pytester.runpytest().assert_outcomes(passed=1)
+
+
 def test_a_session_without_the_spec_hook_aborts_naming_it(pytester: pytest.Pytester):
     write_cases(pytester, greet=PASSING)
 

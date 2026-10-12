@@ -36,6 +36,8 @@ def execute(case: Case, spec: TxtarSpec, sandbox: Path) -> Outcome:
     for variable, root in spec.env.items():
         env[variable] = str(roots[root])
 
+    last = len(case.cmd) - 1
+    stdin = None if case.stdin is None else expand_tokens(case.stdin, roots, spec.token_map)
     out_parts: list[str] = []
     err_parts: list[str] = []
     exit_code = 0
@@ -44,17 +46,20 @@ def execute(case: Case, spec: TxtarSpec, sandbox: Path) -> Outcome:
         argv = shlex.split(line)
         if argv and argv[0] in spec.commands:
             argv[0] = str(spec.commands[argv[0]])
+        feed = stdin if index == last else None
         completed = subprocess.run(
             argv,
             cwd=roots[spec.cwd_root],
             env=env,
+            input=feed,
+            stdin=subprocess.DEVNULL if feed is None else None,
             capture_output=True,
             text=True,
         )
         out_parts.append(completed.stdout)
         err_parts.append(completed.stderr)
         exit_code = completed.returncode
-        if index < len(case.cmd) - 1 and exit_code != 0:
+        if index < last and exit_code != 0:
             early_exit = (line, exit_code)
             break
 
@@ -68,6 +73,14 @@ def execute(case: Case, spec: TxtarSpec, sandbox: Path) -> Outcome:
         files={name: None if body is None else normalize(body) for name, body in files.items()},
         early_exit=early_exit,
     )
+
+
+def expand_tokens(text: str, roots: Mapping[str, Path], tokens: Mapping[str, str]) -> str:
+    """The inverse of normalization: each root's token becomes its absolute sandbox path."""
+    # Longest first so a token that contains another is never split by it.
+    for root in sorted(roots, key=lambda root: len(tokens[root]), reverse=True):
+        text = text.replace(tokens[root], str(roots[root]))
+    return text
 
 
 def tree_target(roots: Mapping[str, Path], name: str) -> Path:

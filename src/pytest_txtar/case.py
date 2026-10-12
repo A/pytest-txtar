@@ -46,6 +46,7 @@ class Case:
     exit_code: int = 0
     stdout: str | None = None
     stderr: str | None = None
+    stdin: str | None = None
     fixtures: list[tuple[str, str]] = field(default_factory=list)
     expected: list[tuple[str, str]] = field(default_factory=list)
 
@@ -81,6 +82,8 @@ def load_case(path: Path, spec: TxtarSpec) -> Case:
             case.stdout = data
         elif name == "stderr":
             case.stderr = data
+        elif name == "stdin":
+            case.stdin = data
         elif name.startswith("fixtures/"):
             case.fixtures.append((check_tree_path(name, spec.roots), data))
         elif name.startswith("expected/"):

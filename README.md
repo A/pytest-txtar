@@ -73,6 +73,7 @@ An archive is a leading comment followed by file sections. A section starts with
 | `exit` | no (default `0`) | Expected exit code of the last `cmd` line, as a decimal integer. |
 | `stdout` | no | Expected stdout, normalized. |
 | `stderr` | no | Expected stderr, normalized. |
+| `stdin` | no | Input written to the stdin of the last `cmd` line, with root tokens expanded. |
 | `fixtures/<root>/<path>` | no | File written under that sandbox root before the run. |
 | `expected/<root>/<path>` | no | Expected content of that file after the run, normalized. |
 
@@ -108,6 +109,24 @@ With more than one line:
 
 All lines share one sandbox, so a case can chain commands that build on each other's writes.
 
+### Standard input
+
+Without a shell there is no `<` or `|`, so input reaches a command through the `stdin` section.
+
+- The `stdin` content is written to the standard input of the **last** `cmd` line — the one whose
+  exit code is asserted — and the stream is then closed.
+- Every earlier line, and the last line of a case without a `stdin` section, gets an empty standard
+  input: reading it yields end-of-file at once. Standard input is never inherited from the runner,
+  so a case cannot block on a terminal.
+- The content is passed as parsed, byte for byte, including blank and trailing-space lines. The
+  txtar rule applies: content that does not end in a newline is treated as if it did, so input
+  always ends in a newline.
+- Root tokens are expanded: every occurrence of a root's token (`{CWD}`, `{HOME}`, …, per the spec's
+  `tokens`) is replaced by the absolute path of that root in the sandbox — the same path the spec's
+  `env` bindings and the working directory point at. This is the inverse of normalization, and
+  the only way a case can hand a command an absolute path inside its sandbox. There is no escape
+  for a literal token. Nothing else is rewritten: `[..]` has no meaning in `stdin`.
+
 ### Normalization
 
 Before comparison, both sides are rewritten so that volatile values do not leak into the expected
@@ -122,7 +141,8 @@ durations. A line without `[..]` must match exactly, whitespace included.
 
 Tokens and `[..]` apply to `stdout`, `stderr` and every `expected/` section. They are not expanded
 in `cmd` or `fixtures/`, which are written to the sandbox literally; a fixture's text is matched
-with them only when it stands in for an absent `expected/` section (see below).
+with them only when it stands in for an absent `expected/` section (see below). `stdin` runs the
+other way: its tokens expand to sandbox paths, and `[..]` means nothing there (see Standard input).
 
 ### Assertions
 
@@ -160,8 +180,8 @@ pytest tests/cases/my-case.txtar --txtar-update
 ```
 
 `--txtar-update` rewrites each selected case whose assertions do not hold — its `stdout`, `stderr`,
-`exit` and `expected/` sections come from the actual normalized run, `cmd` and `fixtures/` are left
-untouched — and lists the rewritten cases in the terminal summary. A fixture the run altered
+`exit` and `expected/` sections come from the actual normalized run, `cmd`, `stdin` and `fixtures/`
+are left untouched as input — and lists the rewritten cases in the terminal summary. A fixture the run altered
 without an `expected/` section gains one holding its new text; one the run deleted gains nothing
 and the case keeps failing, since txtar cannot assert an absent file. A case that already passes is
 never rewritten, so a holding `[..]` is not flattened into the run's literal text. Review the resulting diff as you would any other change —
@@ -191,6 +211,13 @@ makes the tool read as the user's config. The absolute path it echoes back is no
 `expected/cwd/` section asserts the file the run left behind.
 
 ## Changes
+
+### 0.3.0
+
+- New optional `stdin` section: its content, with root tokens expanded to sandbox paths, is the
+  standard input of the last `cmd` line. Every `cmd` line now gets an explicitly empty standard
+  input otherwise, where 0.2.0 let it inherit the runner's.
+- `stdin` is a known section; a case that used it was a malformed case before.
 
 ### 0.2.0
 

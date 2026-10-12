@@ -401,6 +401,51 @@ def test_a_command_word_outside_the_spec_is_run_as_written(tmp_path: Path):
     assert run_case(case, SPEC).stdout == "hello\n"
 
 
+READ_STDIN = 'py -c "import sys; print(repr(sys.stdin.read()))"\n'
+
+
+def test_stdin_is_fed_to_the_last_command_only(tmp_path: Path):
+    case = load_case(
+        write_case(tmp_path, "-- cmd --\n" + READ_STDIN * 2 + "-- stdin --\npayload\n"),
+        SPEC,
+    )
+
+    assert run_case(case, SPEC).stdout == "''\n'payload\\n'\n"
+
+
+def test_without_a_stdin_section_every_command_reads_empty_stdin(tmp_path: Path):
+    case = load_case(write_case(tmp_path, "-- cmd --\n" + READ_STDIN * 2), SPEC)
+
+    assert case.stdin is None
+    assert run_case(case, SPEC).stdout == "''\n''\n"
+
+
+def test_stdin_is_passed_as_parsed_with_a_final_newline_added(tmp_path: Path):
+    case = load_case(
+        write_case(tmp_path, "-- cmd --\n" + READ_STDIN + "-- stdin --\n{\n\n  [..] }"),
+        SPEC,
+    )
+
+    assert case.stdin == "{\n\n  [..] }\n"
+    assert run_case(case, SPEC).stdout == "'{\\n\\n  [..] }\\n'\n"
+
+
+def test_root_tokens_in_stdin_expand_to_sandbox_paths(tmp_path: Path):
+    case = load_case(
+        write_case(
+            tmp_path,
+            "-- cmd --\n"
+            'py -c "import os,sys; cwd, home = sys.stdin.read().split(); '
+            "print(cwd == os.path.join(os.getcwd(), 'a.md'), home == os.environ['HOME'])\"\n"
+            "-- stdin --\n"
+            "{CWD}/a.md {HOME}\n",
+        ),
+        SPEC,
+    )
+
+    assert run_case(case, SPEC).stdout == "True True\n"
+
+
 def test_a_mismatch_renders_as_a_unified_diff(tmp_path: Path):
     case = load_case(
         write_case(tmp_path, "-- cmd --\npy -c \"print('actual')\"\n-- stdout --\nwanted\n"),
@@ -513,3 +558,20 @@ def test_update_writes_no_section_for_a_deleted_fixture(tmp_path: Path):
     archive = updated_archive(case, run_case(case, SPEC))
 
     assert "expected/home/note.md" not in [name for name, _ in archive.files]
+
+
+def test_update_leaves_stdin_untouched(tmp_path: Path):
+    case = load_case(
+        write_case(
+            tmp_path,
+            '-- cmd --\npy -c "import sys; print(sys.stdin.read().strip())"\n'
+            "-- stdin --\n{CWD}/a.md\n"
+            "-- stdout --\nstale\n",
+        ),
+        SPEC,
+    )
+
+    archive = updated_archive(case, run_case(case, SPEC))
+
+    assert ("stdin", "{CWD}/a.md\n") in archive.files
+    assert ("stdout", "{CWD}/a.md\n") in archive.files

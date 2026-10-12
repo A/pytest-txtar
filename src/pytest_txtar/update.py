@@ -8,7 +8,7 @@ from pytest_txtar.compare import Outcome, changed_fixtures
 
 
 def updated_archive(case: Case, outcome: Outcome) -> txtar.Archive:
-    """The case with its assertions taken from the run; `cmd` and `fixtures/` kept.
+    """The case with its assertions taken from the run; `cmd`, `stdin` and `fixtures/` kept.
 
     A fixture the run changed without an `expected/` section gains one holding its new text.
 
