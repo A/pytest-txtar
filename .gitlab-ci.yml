@@ -1,0 +1,52 @@
+# Port of .github/workflows/ci.yml; the GitHub copy stays live for the mirror.
+# GitHub's runner resolves Python from requires-python (>=3.12) on ubuntu-latest,
+# which is 3.12 — one version, no matrix there, so none here either.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+stages: [test, publish]
+
+default:
+  image: python:3.12.15-slim
+
+variables:
+  UV_VERSION: "0.13.0"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv-cache"
+  UV_LINK_MODE: copy
+
+.uv:
+  before_script:
+    - pip install --quiet --root-user-action=ignore "uv==${UV_VERSION}"
+  cache:
+    key:
+      files: [uv.lock]
+    paths: [.uv-cache]
+
+test:
+  extends: .uv
+  stage: test
+  script:
+    - uv sync
+    - uv run ruff check .
+    - uv run basedpyright
+    - uv run pytest
+
+# Both forges would publish the same tag; whichever runs second gets a
+# "file exists" from PyPI. Gated on PYPI_TOKEN so it stays inert until that
+# CI/CD variable is set here (and the GitHub one retired).
+publish:
+  extends: .uv
+  stage: publish
+  needs: [test]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/ && $PYPI_TOKEN
+  script:
+    - uv build
+    - UV_PUBLISH_TOKEN="$PYPI_TOKEN" uv publish
